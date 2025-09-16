@@ -323,7 +323,8 @@ def main():
             with col3:
                 submit = st.form_submit_button("Add",type='primary')
             with col4:
-                cencel = st.button("Cancel",type='secondary'):
+                cencel = st.button("Cancel",type='secondary')
+
                     
         if cencel:
             go_to("home")
