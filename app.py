@@ -34,20 +34,20 @@ def add_user(username,gmail,password):
 def create_join_code(length = 8):
     code = ''.join(secrets.choice(string.ascii_letters+string.digits)for _ in range(length))
     return code
-secrets.choice
+
 def create_group(group_name,username):
     #need add roles system like manager (auto fro creator) admin, member later
     cursor, conn = connect_db()
-    sql = "CREATE TABLE IF NOT EXISTS groups (group_name VARCHAR(255),join_code VARCHAR(10) PRIMARY KEY,created_by VARCHAR(255), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+    sql = "CREATE TABLE IF NOT EXISTS user_groups (group_name VARCHAR(255),join_code VARCHAR(10) PRIMARY KEY,created_by VARCHAR(255), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
     cursor.execute(sql)
     conn.commit()
     while True:
         code = create_join_code()
-        sql = "SELECT * FROM groups WHERE join_code =%s"
+        sql = "SELECT * FROM user_groups WHERE join_code =%s"
         cursor.execute(sql,(code,))
         if not cursor.fetchone():
             break
-    sql = "INSERT INTO groups (group_name,join_code,created_by) VALUES (%s,%s,%s)"
+    sql = "INSERT INTO user_groups (group_name,join_code,created_by) VALUES (%s,%s,%s)"
     values = (group_name,code,username)
     cursor.execute(sql,values)
     conn.commit()
@@ -59,9 +59,9 @@ def create_group(group_name,username):
 
 def join_group(username,join_code):
     cursor,conn=connect_db()
-    sql = "CREATE TABLE IF NOT EXISTS group_members (member_id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255), group_name VARCHAR(255),join_code VARCHAR(10),joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY (username) REFERENCES users(username),FOREIGN KEY (join_code) REFERENCES groups(join_code))"
+    sql = "CREATE TABLE IF NOT EXISTS group_members (member_id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255), group_name VARCHAR(255),join_code VARCHAR(10),joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY (username) REFERENCES users(username),FOREIGN KEY (join_code) REFERENCES user_groups(join_code))"
     cursor.execute(sql)
-    sql = "SELECT * FROM groups WHERE join_code =%s"
+    sql = "SELECT * FROM user_groups WHERE join_code =%s"
     cursor.execute(sql,(join_code,))
     row = cursor.fetchone()
     if not row:
@@ -124,6 +124,7 @@ def get_user_group(username):
     sql = "SELECT group_name FROM group_members WHERE username=%s"
     cursor.execute(sql,(username,))
     result = cursor.fetchone()
+    close_db(cursor,conn)
     if result:
         return result[0]
     return None
@@ -133,7 +134,7 @@ def view_group_items(groupname):
     sql ="""SELECT i.*, u.username FROM items i
             JOIN group_members gm ON i.username = gm.username
             JOIN users u ON i.username = u.username
-            WHERE gm.groupname =%s AND i.purchased = FALSE
+            WHERE gm.group_name =%s AND i.purchased = FALSE
             ORDER BY i.importance DESC, i.timestamp ASC"""
     cursor.execute(sql,(groupname,))
     results = cursor.fetchall()
@@ -190,12 +191,21 @@ def remove_item(item_id):
 
 def view_items(username):
     cursor, conn = connect_db()
-    sql = "SELECT * FROM items WHERE username = %s"
+    sql = "SELECT * FROM items WHERE username = %s AND purchased = FALSE"
     cursor.execute(sql, (username,))
     results = cursor.fetchall()
     close_db(cursor,conn)
     return results
 
+def get_group_join_code(group_name):
+    cursor,conn = connect_db()
+    sql = "SELECT join_code FROM  user_groups WHERE group_name=%s"
+    cursor.execute(sql,(group_name,))
+    result = cursor.fetchone()
+    close_db(cursor,conn)
+    if result:
+        return result[0]
+    return None
 def main():
     if 'page' not in st.session_state:
         st.session_state.page = "login"
@@ -211,8 +221,7 @@ def main():
         st.subheader("Login to your account")
         username = st.text_input("username")
         password = st.text_input("password",type="password")
-        st.login = st.button("Login")
-        if st.login:
+        if st.button("Login"):
             if authenticate_user(username,password) == "Login Success":
                 st.session_state.username = username
                 st.success("Login successful!")
@@ -232,7 +241,7 @@ def main():
     def signup():
         st.subheader("Create a new account")
         username = st.text_input("username",help="Username must be between 5 to 20 characters long.")
-        if username and len(username) < 5 or len(username) > 20:
+        if username and (len(username) < 5 or len(username) > 20):
             st.warning("Username must be between 5 to 20 characters long.")
         if username and check_user(username):
             st.warning("Username already exists. Please choose a different username.")
@@ -265,12 +274,11 @@ def main():
                 st.warning("Password must contain at least one special character.")
             elif 5>len(username) or len(username)>20:
                 st.warning("Username must be between 5 to 20 characters long.")
-            elif password and confirm_password and username:
+            else:
                 if add_user(username,gmail,password):
                     st.success("Account created successfully!")
                     go_to("login")
                     st.rerun()
-                    
                 else:
                     st.warning("Username already exists. Please choose a different username.")
 
@@ -293,7 +301,7 @@ def main():
                     go_to("home")
                     st.rerun()
         with col4:
-            if st.button("Cancel",type="tertiary"):
+            if st.button("Cancel",type="secondary"):
                 go_to("home")
                 st.rerun()
 
@@ -323,10 +331,10 @@ def main():
             with col3:
                 submit = st.form_submit_button("Add",type='primary')
             with col4:
-                cencel = st.button("Cancel",type='secondary')
+                cancel = st.form_submit_button("Cancel",type='secondary')
 
                     
-        if cencel:
+        if cancel:
             go_to("home")
             st.rerun()
         if submit:
@@ -363,13 +371,13 @@ def main():
                     go_to("home")
                     st.rerun()
             with col3:
-                if st.button("Cencel",type='tertiary'):
+                if st.button("Cancel",type="secondary"):
                     go_to("home")
                     st.rerun()
         else:
             st.error("You are not in group")
             if st.button("back to home"):
-                go_to(home)
+                go_to("home")
                 st.rerun()
 
 
@@ -382,7 +390,7 @@ def main():
             with col3:
                 submit = st.form_submit_button("join",type='primary')
             with col4:
-                if st.button("Cancel",type="tertiary"):
+                if st.form_submit_button("Cancel",type="secondary"):
                     go_to("home")
                     st.rerun()
         if submit:
@@ -391,7 +399,7 @@ def main():
             else:
                 group_name = join_group(st.session_state.username,group_code)
                 if group_name:
-                    st.session_state.groupname = group_name
+                    st.session_state.group_name = group_name
                     st.success(f"Successfully joined group {group_name}")
                     time.sleep(3)
                     go_to("home")
@@ -403,7 +411,7 @@ def main():
         st.session_state.username = ""
         st.session_state.group_name=""
         go_to("login")
-        st.rerun
+        st.rerun()
 
     def view_list_ui():
         st.subheader("Grocery list")
@@ -412,7 +420,7 @@ def main():
             st.info(f"Group: {group_name}")
             items = view_group_items(group_name)
         else:
-            st.info("personal list (you're no in group)")
+            st.info("personal list (you're not in group)")
             items = view_items(st.session_state.username)
         
         if items:
@@ -426,14 +434,14 @@ def main():
                 filteredItems = items
             
             if filteredItems:
-                for items in filteredItems:
+                for item in filteredItems:
                     item_id, username, item_name, quantity, unit, importance, shop, category, notes, unavailable, purchased,timestamp = item[:12]
 
                     with st.container():
-                        col1,col2,col3,col4 =st.columns([3,1,1,1])
+                        col1,col2,col3 =st.columns([3,1,1])
 
                         with col1:
-                            st.write(f"{importancecolors.get(importance,'⚪')} **{item_name}** - {quantity}{unit}")
+                            st.write(f"{importancecolors.get(importance,'⚪')} **{item_name}** - {quantity} {unit}")
                             if group_name:
                                 st.caption(f"Added by {username}")
                             if notes:
@@ -463,6 +471,10 @@ def main():
         if check_in_group(username):
             group_name = get_user_group(username)
             st.session_state.group_name = group_name
+            st.success(f"You are in group: **{group_name}**")
+            join_code = get_group_join_code(group_name)
+            if join_code:
+                st.info(f"Group Join Code: **{join_code}** - Share this with friends to join your group")
             col1,col2,col3 = st.columns(3)
         else:
             st.info("You are not in any group. Create or join group to share your grocery list")
@@ -494,6 +506,7 @@ def main():
                     go_to("join_group")
                     st.rerun()
 
+        st.divider()
         view_list_ui()
 
     if st.session_state.page == "login":
