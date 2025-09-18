@@ -8,14 +8,28 @@ import string
 pwd_hash = passlib.context.CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def connect_db():
-    conn = mysql.connector.connect(**st.secrets["mysql"])
-    cursor = conn.cursor()
-    return cursor, conn
+    try:
+        conn = mysql.connector.connect(
+            host=st.secrets["mysql"]["host"],
+            port=st.secrets["mysql"]["port"],
+            database=st.secrets["mysql"]["database"],
+            user=st.secrets["mysql"]["user"],
+            password=st.secrets["mysql"]["password"],
+            autocommit=True,
+            use_unicode=True,
+            charset='utf8mb4'
+        )
+        cursor = conn.cursor(buffered=True)
+        return cursor, conn
+    except mysql.connector.Error as err:
+        st.error(f"Database connection failed: {err}")
+        st.stop()
     
 def close_db(cursor,connection):
-    cursor.close()
-    connection.close()
-
+    if cursor:
+        cursor.close()
+    if connection and connection.is_connected():
+        connection.close()
 def add_user(username,gmail,password):
     cursor, conn = connect_db()
     searcher = "SELECT * FROM users WHERE username = %s"
@@ -93,18 +107,24 @@ def verify_password(plain_password,hashed_password):
 
 def authenticate_user(username,password):
     cursor, conn = connect_db()
-    sql = "CREATE TABLE IF NOT EXISTS users (username VARCHAR(255) PRIMARY KEY,gmail VARCHAR(255), password VARCHAR(255),in_group BOOLEAN DEFAULT FALSE, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-    cursor.execute(sql)
-    sql = "SELECT * FROM users WHERE username = %s"
-    cursor.execute(sql, (username,))
-    results = cursor.fetchone()
-    close_db(cursor,conn)
-    if not results:
-        return "User Not found"
-    if verify_password(password,results[2]):
-        return "Login Success"
-    else:
-        return "Wrong password"
+    try:
+        sql = "CREATE TABLE IF NOT EXISTS users (username VARCHAR(255) PRIMARY KEY,gmail VARCHAR(255), password VARCHAR(255),in_group BOOLEAN DEFAULT FALSE, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        cursor.execute(sql)
+        conn.commit()
+        sql = "SELECT * FROM users WHERE username = %s"
+        cursor.execute(sql, (username,))
+        results = cursor.fetchone()
+        close_db(cursor,conn)
+        if not results:
+            return "User Not found"
+        if verify_password(password,results[2]):
+            return "Login Success"
+        else:
+            return "Wrong password"
+    except mysql.connector.Error as err:
+        close_db(cursor,conn)
+        st.error(f"Database error: {err}")
+        return "Database Error"
 
 def check_in_group(username):
     cursor,conn = connect_db()
