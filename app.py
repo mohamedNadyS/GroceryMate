@@ -183,7 +183,7 @@ def add_item(username,item,quantity,unit,importance,category,notes):
 def change_password(username,new_password):
     cursor,conn = connect_db()
     sql = "UPDATE users SET password = %s WHERE username=%s"
-    values = hash_password(new_password),username)
+    values = (hash_password(new_password),username)
     cursor.execute(sql,values)
     conn.commit()
     close_db(cursor,conn)
