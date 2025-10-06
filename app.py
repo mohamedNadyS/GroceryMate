@@ -1,11 +1,11 @@
 import streamlit as st
-import passlib.context
 import mysql.connector
 import time
 import secrets
 import string
+import bcrypt
 
-pwd_hash = passlib.context.CryptContext(schemes=["bcrypt"], deprecated="auto")
+# pwd_hash = passlib.context.CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def connect_db():
     try:
@@ -40,7 +40,7 @@ def add_user(username,gmail,password):
     sql = "CREATE TABLE IF NOT EXISTS users (username VARCHAR(255) PRIMARY KEY,gmail VARCHAR(255), password VARCHAR(255),in_group BOOLEAN DEFAULT FALSE, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
     cursor.execute(sql)
     sql = "INSERT INTO users (username,gmail,password) VALUES (%s,%s,%s)"
-    cursor.execute(sql, (username,gmail,pwd_hash.hash(password)))
+    cursor.execute(sql, (username,gmail,hash_password(password)))
     conn.commit()
     close_db(cursor,conn)
     return True
@@ -102,9 +102,16 @@ def remove_from_group(username,group_name):
     close_db(cursor,conn)
 
 
-def verify_password(plain_password,hashed_password):
-    return pwd_hash.verify(plain_password,hashed_password)
+#def verify_password(plain_password,hashed_password):
+#    return pwd_hash.verify(plain_password,hashed_password)
+def hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
+def verify_password(plain_password, hashed_password):
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
 def authenticate_user(username,password):
     cursor, conn = connect_db()
     try:
@@ -176,7 +183,7 @@ def add_item(username,item,quantity,unit,importance,category,notes):
 def change_password(username,new_password):
     cursor,conn = connect_db()
     sql = "UPDATE users SET password = %s WHERE username=%s"
-    values = (pwd_hash.hash(new_password),username)
+    values = hash_password(new_password),username)
     cursor.execute(sql,values)
     conn.commit()
     close_db(cursor,conn)
